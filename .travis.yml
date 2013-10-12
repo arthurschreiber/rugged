@@ -10,6 +10,7 @@ rvm:
   - ruby-head
   - rbx-19mode
   - rbx-20mode
+  - rbx-21mode
 
 # We need the config so the tests don't fail
 script:
