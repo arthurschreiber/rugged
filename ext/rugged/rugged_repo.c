@@ -384,6 +384,12 @@ static VALUE rugged__extract_cred(VALUE payload) {
 				NIL_P(rb_privatekey) ? NULL : StringValueCStr(rb_privatekey),
 				NIL_P(rb_passphrase) ? NULL : StringValueCStr(rb_passphrase));
 		}
+	} else if (rb_obj_is_kind_of(rb_cred, rb_cRuggedCredDefault)) {
+		if (!(cred_payload->allowed_types & GIT_CREDTYPE_SSH_KEY)) {
+			rb_raise(rb_eArgError, "Invalid credential type");
+		} else {
+			git_cred_default_new(cred);
+		}
 	}
 
 	return Qnil;
@@ -460,7 +466,10 @@ static void parse_clone_options(git_clone_options *ret, VALUE rb_options_hash, s
 
 	val = rb_hash_aref(rb_options_hash, CSTR2SYM("credentials"));
 	if (RTEST(val)) {
-		if (rb_obj_is_kind_of(val, rb_cRuggedCredPlaintext) || rb_obj_is_kind_of(val, rb_cRuggedCredSshKey)) {
+		if (rb_obj_is_kind_of(val, rb_cRuggedCredPlaintext) ||
+			rb_obj_is_kind_of(val, rb_cRuggedCredSshKey) ||
+			rb_obj_is_kind_of(val, rb_cRuggedCredDefault))
+		{
 			remote_callbacks.credentials = rugged__default_remote_credentials_cb;
 			remote_payload->credentials = val;
 		} else if (rb_respond_to(val, rb_intern("call"))) {
