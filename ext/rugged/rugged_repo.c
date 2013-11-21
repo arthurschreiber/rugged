@@ -358,7 +358,10 @@ static VALUE rugged__extract_cred(VALUE payload) {
 			Check_Type(rb_username, T_STRING);
 			Check_Type(rb_password, T_STRING);
 
-			git_cred_userpass_plaintext_new(cred, StringValueCStr(rb_username), StringValueCStr(rb_password));
+
+			rugged_exception_check(
+				git_cred_userpass_plaintext_new(cred,
+					StringValueCStr(rb_username), StringValueCStr(rb_password)));
 		}
 	} else if (rb_obj_is_kind_of(rb_cred, rb_cRuggedCredSshKey)) {
 		if (!(cred_payload->allowed_types & GIT_CREDTYPE_SSH_KEY)) {
@@ -378,17 +381,18 @@ static VALUE rugged__extract_cred(VALUE payload) {
 			if (!NIL_P(rb_passphrase))
 				Check_Type(rb_passphrase, T_STRING);
 
-			git_cred_ssh_key_new(cred,
-				NIL_P(rb_username) ? NULL : StringValueCStr(rb_username),
-				NIL_P(rb_publickey) ? NULL : StringValueCStr(rb_publickey),
-				NIL_P(rb_privatekey) ? NULL : StringValueCStr(rb_privatekey),
-				NIL_P(rb_passphrase) ? NULL : StringValueCStr(rb_passphrase));
+			rugged_exception_check(
+				git_cred_ssh_key_new(cred,
+					NIL_P(rb_username) ? NULL : StringValueCStr(rb_username),
+					NIL_P(rb_publickey) ? NULL : StringValueCStr(rb_publickey),
+					NIL_P(rb_privatekey) ? NULL : StringValueCStr(rb_privatekey),
+					NIL_P(rb_passphrase) ? NULL : StringValueCStr(rb_passphrase)));
 		}
 	} else if (rb_obj_is_kind_of(rb_cred, rb_cRuggedCredDefault)) {
 		if (!(cred_payload->allowed_types & GIT_CREDTYPE_SSH_KEY)) {
 			rb_raise(rb_eArgError, "Invalid credential type");
 		} else {
-			git_cred_default_new(cred);
+			rugged_exception_check(git_cred_default_new(cred));
 		}
 	}
 
