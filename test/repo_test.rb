@@ -218,6 +218,40 @@ class RepositoryTest < Rugged::SandboxedTestCase
   end
 end
 
+class MergeCommitsRepositoryTest < Rugged::SandboxedTestCase
+  def setup
+    super
+
+    @repo = sandbox_init("merge-resolve")
+  end
+
+  def teardown
+    @repo.close
+  end
+
+  def test_merge_commits
+    our_commit = Rugged::Branch.lookup(@repo, "master").tip
+    their_commit = Rugged::Branch.lookup(@repo, "branch").tip
+
+    index = @repo.merge_commits(our_commit, their_commit)
+
+    assert_equal 8, index.count
+
+    assert_equal "233c0919c998ed110a4b6ff36f353aec8b713487", index["added-in-master.txt", 0][:oid]
+    assert_equal "f2e1550a0c9e53d5811175864a29536642ae3821", index["automergeable.txt", 0][:oid]
+    assert_equal "4eb04c9e79e88f6640d01ff5b25ca2a60764f216", index["changed-in-branch.txt", 0][:oid]
+    assert_equal "11deab00b2d3a6f5a3073988ac050c2d7b6655e2", index["changed-in-master.txt", 0][:oid]
+
+    assert_equal "d427e0b2e138501a3d15cc376077a3631e15bd46", index["conflicting.txt", 1][:oid]
+    assert_equal "4e886e602529caa9ab11d71f86634bd1b6e0de10", index["conflicting.txt", 2][:oid]
+    assert_equal "2bd0a343aeef7a2cf0d158478966a6e587ff3863", index["conflicting.txt", 3][:oid]
+
+    assert_equal "c8f06f2e3bb2964174677e91f0abead0e43c9e5d", index["unchanged.txt", 0][:oid]
+
+    assert index.conflicts?
+  end
+end
+
 class ShallowRepositoryTest < Rugged::SandboxedTestCase
   def setup
     super
@@ -269,6 +303,53 @@ class RepositoryWriteTest < Rugged::TestCase
     @repo.config['user.email'] = email
     assert_equal name, @repo.default_signature[:name]
     assert_equal email, @repo.default_signature[:email]
+  end
+end
+
+class RepositoryDiscoverTest < Rugged::TestCase
+  def setup
+    @tmpdir = Dir.mktmpdir
+    Dir.mkdir(File.join(@tmpdir, 'foo'))
+  end
+
+  def teardown
+    FileUtils.remove_entry_secure(@tmpdir)
+  end
+
+  def test_discover_false
+    assert_raises Rugged::RepositoryError do
+      Rugged::Repository.discover(@tmpdir)
+    end
+  end
+
+  def test_discover_nested_false
+    assert_raises Rugged::RepositoryError do
+      Rugged::Repository.discover(File.join(@tmpdir, 'foo'))
+    end
+  end
+
+  def test_discover_true
+    repo = Rugged::Repository.init_at(@tmpdir, true)
+    root = Rugged::Repository.discover(@tmpdir)
+    begin
+      assert root.bare?
+      assert_equal repo.path, root.path
+    ensure
+      repo.close
+      root.close
+    end
+  end
+
+  def test_discover_nested_true
+    repo = Rugged::Repository.init_at(@tmpdir, true)
+    root = Rugged::Repository.discover(File.join(@tmpdir, 'foo'))
+    begin
+      assert root.bare?
+      assert_equal repo.path, root.path
+    ensure
+      repo.close
+      root.close
+    end
   end
 end
 
@@ -353,8 +434,14 @@ class RepositoryCloneTest < Rugged::TestCase
   def test_clone_with_progress
     total_objects = indexed_objects = received_objects = received_bytes = nil
     callsback = 0
-    repo = Rugged::Repository.clone_at(@source_path, @tmppath,
-      :progress => lambda { |*args| callsback += 1 ; total_objects, indexed_objects, received_objects, received_bytes = args })
+    repo = Rugged::Repository.clone_at(@source_path, @tmppath,{
+      :callbacks => {
+        :transfer_progress => lambda { |*args|
+          total_objects, indexed_objects, received_objects, received_bytes = args
+          callsback += 1
+        }
+      }
+    })
     repo.close
     assert_equal 22,   callsback
     assert_equal 19,   total_objects
@@ -365,7 +452,9 @@ class RepositoryCloneTest < Rugged::TestCase
 
   def test_clone_quits_on_error
     begin
-      Rugged::Repository.clone_at(@source_path, @tmppath, :progress => lambda { |*_| raise 'boom' })
+      Rugged::Repository.clone_at(@source_path, @tmppath, :callbacks => {
+        :transfer_progress => lambda { |*_| raise 'boom' }
+      })
     rescue => e
       assert_equal 'boom', e.message
     end
@@ -374,7 +463,9 @@ class RepositoryCloneTest < Rugged::TestCase
 
   def test_clone_with_bad_progress_callback
     assert_raises ArgumentError do
-      Rugged::Repository.clone_at(@source_path, @tmppath, :progress => Object.new)
+      Rugged::Repository.clone_at(@source_path, @tmppath, :callbacks => {
+        :transfer_progress => Object.new
+      })
     end
     assert_no_dotgit_dir(@tmppath)
   end
@@ -458,7 +549,7 @@ class RepositoryPushTest < Rugged::SandboxedTestCase
   def test_push_to_non_bare_raise_error
     @remote_repo.config['core.bare'] = 'false'
 
-    assert_raises Rugged::Error do
+    assert_raises Rugged::InvalidError do
       @repo.push("origin", ["refs/heads/master"])
     end
   end
@@ -503,37 +594,37 @@ class RepositoryCheckoutTest < Rugged::SandboxedTestCase
     @repo.checkout_tree(@repo.rev_parse("refs/heads/dir"), :strategy => :force)
     @repo.head = "refs/heads/dir"
 
-    assert File.exists?(File.join(@repo.workdir, "README"))
-    assert File.exists?(File.join(@repo.workdir, "branch_file.txt"))
-    assert File.exists?(File.join(@repo.workdir, "new.txt"))
-    assert File.exists?(File.join(@repo.workdir, "a/b.txt"))
+    assert File.exist?(File.join(@repo.workdir, "README"))
+    assert File.exist?(File.join(@repo.workdir, "branch_file.txt"))
+    assert File.exist?(File.join(@repo.workdir, "new.txt"))
+    assert File.exist?(File.join(@repo.workdir, "a/b.txt"))
 
-    refute File.exists?(File.join(@repo.workdir, "ab"))
+    refute File.exist?(File.join(@repo.workdir, "ab"))
 
     @repo.checkout_tree(@repo.rev_parse("refs/heads/subtrees"), :strategy => :safe)
     @repo.head = "refs/heads/subtrees"
 
-    assert File.exists?(File.join(@repo.workdir, "README"))
-    assert File.exists?(File.join(@repo.workdir, "branch_file.txt"))
-    assert File.exists?(File.join(@repo.workdir, "new.txt"))
-    assert File.exists?(File.join(@repo.workdir, "ab/4.txt"))
-    assert File.exists?(File.join(@repo.workdir, "ab/c/3.txt"))
-    assert File.exists?(File.join(@repo.workdir, "ab/de/2.txt"))
-    assert File.exists?(File.join(@repo.workdir, "ab/de/fgh/1.txt"))
+    assert File.exist?(File.join(@repo.workdir, "README"))
+    assert File.exist?(File.join(@repo.workdir, "branch_file.txt"))
+    assert File.exist?(File.join(@repo.workdir, "new.txt"))
+    assert File.exist?(File.join(@repo.workdir, "ab/4.txt"))
+    assert File.exist?(File.join(@repo.workdir, "ab/c/3.txt"))
+    assert File.exist?(File.join(@repo.workdir, "ab/de/2.txt"))
+    assert File.exist?(File.join(@repo.workdir, "ab/de/fgh/1.txt"))
 
-    refute File.exists?(File.join(@repo.workdir, "a"))
+    refute File.exist?(File.join(@repo.workdir, "a"))
   end
 
   def test_checkout_with_revspec_string
     @repo.checkout_tree("refs/heads/dir", :strategy => :force)
     @repo.head = "refs/heads/dir"
 
-    assert File.exists?(File.join(@repo.workdir, "README"))
-    assert File.exists?(File.join(@repo.workdir, "branch_file.txt"))
-    assert File.exists?(File.join(@repo.workdir, "new.txt"))
-    assert File.exists?(File.join(@repo.workdir, "a/b.txt"))
+    assert File.exist?(File.join(@repo.workdir, "README"))
+    assert File.exist?(File.join(@repo.workdir, "branch_file.txt"))
+    assert File.exist?(File.join(@repo.workdir, "new.txt"))
+    assert File.exist?(File.join(@repo.workdir, "a/b.txt"))
 
-    refute File.exists?(File.join(@repo.workdir, "ab"))
+    refute File.exist?(File.join(@repo.workdir, "ab"))
   end
 
   def test_checkout_tree_raises_errors_in_notify_cb
@@ -556,23 +647,23 @@ class RepositoryCheckoutTest < Rugged::SandboxedTestCase
   end
 
   def test_checkout_tree_subdirectory
-    refute File.exists?(File.join(@repo.workdir, "ab"))
+    refute File.exist?(File.join(@repo.workdir, "ab"))
 
     @repo.checkout_tree(@repo.rev_parse("refs/heads/subtrees"), :strategy => :safe, :paths => "ab/de/")
 
-    assert File.exists?(File.join(@repo.workdir, "ab"))
-    assert File.exists?(File.join(@repo.workdir, "ab/de/2.txt"))
-    assert File.exists?(File.join(@repo.workdir, "ab/de/fgh/1.txt"))
+    assert File.exist?(File.join(@repo.workdir, "ab"))
+    assert File.exist?(File.join(@repo.workdir, "ab/de/2.txt"))
+    assert File.exist?(File.join(@repo.workdir, "ab/de/fgh/1.txt"))
   end
 
   def test_checkout_tree_subtree_directory
-    refute File.exists?(File.join(@repo.workdir, "de"))
+    refute File.exist?(File.join(@repo.workdir, "de"))
 
     @repo.checkout_tree(@repo.rev_parse("refs/heads/subtrees:ab"), :strategy => :safe, :paths => "de/")
 
-    assert File.exists?(File.join(@repo.workdir, "de"))
-    assert File.exists?(File.join(@repo.workdir, "de/2.txt"))
-    assert File.exists?(File.join(@repo.workdir, "de/fgh/1.txt"))
+    assert File.exist?(File.join(@repo.workdir, "de"))
+    assert File.exist?(File.join(@repo.workdir, "de/2.txt"))
+    assert File.exist?(File.join(@repo.workdir, "de/fgh/1.txt"))
   end
 
   def test_checkout_tree_raises_with_bare_repo
@@ -585,8 +676,8 @@ class RepositoryCheckoutTest < Rugged::SandboxedTestCase
     Dir.mktmpdir("alternative") do |dir|
       @bare.checkout_tree("HEAD", :strategy => :safe_create, :target_directory => dir)
 
-      assert File.exists?(File.join(dir, "README"))
-      assert File.exists?(File.join(dir, "new.txt"))
+      assert File.exist?(File.join(dir, "README"))
+      assert File.exist?(File.join(dir, "new.txt"))
     end
   end
 
@@ -601,7 +692,7 @@ class RepositoryCheckoutTest < Rugged::SandboxedTestCase
 
     @repo.checkout("HEAD", :strategy => :force)
 
-    assert File.exists?(File.join(@repo.workdir, "README"))
+    assert File.exist?(File.join(@repo.workdir, "README"))
     assert_equal "refs/heads/dir", @repo.head.name
   end
 

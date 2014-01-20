@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2013 GitHub, Inc
+ * Copyright (c) 2014 GitHub, Inc
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -106,7 +106,7 @@ static VALUE rb_git_index_read(VALUE self)
 
 	Data_Get_Struct(self, git_index, index);
 
-	error = git_index_read(index);
+	error = git_index_read(index, 0);
 	rugged_exception_check(error);
 
 	return Qnil;
@@ -792,7 +792,7 @@ static VALUE rb_git_index_diff(int argc, VALUE *argv, VALUE self)
 	git_index *index;
 	git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
 	git_repository *repo;
-	git_diff_list *diff = NULL;
+	git_diff *diff = NULL;
 	VALUE owner, rb_other, rb_options;
 	int error;
 

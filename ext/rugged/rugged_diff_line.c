@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2012 GitHub, Inc
+ * Copyright (c) 2014 GitHub, Inc
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -27,21 +27,13 @@
 extern VALUE rb_cRuggedDiff;
 VALUE rb_cRuggedDiffLine;
 
-VALUE rugged_diff_line_new(
-	VALUE owner,
-	const char line_origin,
-	const char *content,
-	size_t content_len,
-	int old_lineno,
-	int new_lineno)
+VALUE rugged_diff_line_new(VALUE owner, const git_diff_line *line)
 {
-	VALUE rb_line;
-	VALUE rb_line_origin;
+	VALUE rb_line = rb_class_new_instance(0, NULL, rb_cRuggedDiffLine), rb_line_origin;
 
-	rb_line = rb_class_new_instance(0, NULL, rb_cRuggedDiffLine);
 	rugged_set_owner(rb_line, owner);
 
-	switch(line_origin) {
+	switch(line->origin) {
 		case GIT_DIFF_LINE_CONTEXT:
 			rb_line_origin = CSTR2SYM("context");
 			break;
@@ -66,9 +58,14 @@ VALUE rugged_diff_line_new(
 	}
 
 	rb_iv_set(rb_line, "@line_origin", rb_line_origin);
-	rb_iv_set(rb_line, "@content", rb_str_new(content, content_len));
-	rb_iv_set(rb_line, "@old_lineno", INT2FIX(old_lineno));
-	rb_iv_set(rb_line, "@new_lineno", INT2FIX(new_lineno));
+	rb_iv_set(rb_line, "@content", rb_str_new(line->content, line->content_len));
+	rb_iv_set(rb_line, "@old_lineno", INT2FIX(line->old_lineno));
+	rb_iv_set(rb_line, "@new_lineno", INT2FIX(line->new_lineno));
+
+	if (line->content_offset == -1)
+		rb_iv_set(rb_line, "@content_offset", Qnil);
+	else
+		rb_iv_set(rb_line, "@content_offset", INT2FIX(line->content_offset));
 
 	return rb_line;
 }

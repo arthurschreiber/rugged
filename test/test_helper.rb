@@ -7,7 +7,7 @@ require 'pp'
 module Rugged
   class TestCase < MiniTest::Unit::TestCase
     TEST_DIR = File.dirname(File.expand_path(__FILE__))
-    LIBGIT2_FIXTURE_DIR = File.expand_path("../../vendor/libgit2/tests-clar/resources", __FILE__)
+    LIBGIT2_FIXTURE_DIR = File.expand_path("../../vendor/libgit2/tests/resources", __FILE__)
 
     protected
     def with_default_encoding(encoding, &block)
@@ -39,9 +39,9 @@ module Rugged
       FileUtils.cp_r(File.join(TestCase::LIBGIT2_FIXTURE_DIR, repository), @_sandbox_path)
 
       Dir.chdir(File.join(@_sandbox_path, repository)) do
-        File.rename(".gitted", ".git") if File.exists?(".gitted")
-        File.rename("gitattributes", ".gitattributes") if File.exists?("gitattributes")
-        File.rename("gitignore", ".gitignore") if File.exists?("gitignore")
+        File.rename(".gitted", ".git") if File.exist?(".gitted")
+        File.rename("gitattributes", ".gitattributes") if File.exist?("gitattributes")
+        File.rename("gitignore", ".gitignore") if File.exist?("gitignore")
       end
 
       Rugged::Repository.new(File.join(@_sandbox_path, repository))
@@ -49,7 +49,7 @@ module Rugged
 
     def sandbox_clone(repository, name)
       Dir.chdir(@_sandbox_path) do
-        `git clone #{repository} #{name}`
+        `git clone --quiet -- #{repository} #{name}`
       end
 
       Rugged::Repository.new(File.join(@_sandbox_path, name))
@@ -79,7 +79,7 @@ module Rugged
     def temp_repo(repo)
       dir = Dir.mktmpdir 'dir'
       repo_dir = File.join(TestCase::TEST_DIR, (File.join('fixtures', repo, '.')))
-      `git clone #{repo_dir} #{dir}`
+      `git clone --quiet -- #{repo_dir} #{dir}`
       dir
     end
 

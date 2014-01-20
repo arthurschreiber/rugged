@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2013 GitHub, Inc
+ * Copyright (c) 2014 GitHub, Inc
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -62,10 +62,12 @@ void Init_rugged_remote(void);
 void Init_rugged_notes(void);
 void Init_rugged_settings(void);
 void Init_rugged_diff(void);
-void Init_rugged_diff_patch(void);
+void Init_rugged_patch(void);
 void Init_rugged_diff_delta(void);
 void Init_rugged_diff_hunk(void);
 void Init_rugged_diff_line(void);
+void Init_rugged_blame(void);
+void Init_rugged_cred(void);
 
 VALUE rb_git_object_init(git_otype type, int argc, VALUE *argv, VALUE self);
 
@@ -78,14 +80,15 @@ VALUE rugged_config_new(VALUE klass, VALUE owner, git_config *cfg);
 VALUE rugged_object_new(VALUE owner, git_object *object);
 VALUE rugged_object_rev_parse(VALUE rb_repo, VALUE rb_spec, int as_obj);
 VALUE rugged_ref_new(VALUE klass, VALUE owner, git_reference *ref);
-VALUE rugged_diff_new(VALUE klass, VALUE owner, git_diff_list *diff);
-VALUE rugged_diff_patch_new(VALUE owner, git_diff_patch *patch);
+VALUE rugged_diff_new(VALUE klass, VALUE owner, git_diff *diff);
+VALUE rugged_patch_new(VALUE owner, git_patch *patch);
 VALUE rugged_diff_delta_new(VALUE owner, const git_diff_delta *delta);
-VALUE rugged_diff_hunk_new(VALUE owner, int hunk_idx, const git_diff_range *range, const char *header, size_t header_len, size_t lines_in_hunk);
-VALUE rugged_diff_line_new(VALUE owner, const char line_origin, const char *content, size_t content_len, int old_lineno, int new_lineno);
+VALUE rugged_diff_hunk_new(VALUE owner, size_t hunk_idx, const git_diff_hunk *hunk, size_t lines_in_hunk);
+VALUE rugged_diff_line_new(VALUE owner, const git_diff_line *line);
 VALUE rb_git_delta_file_fromC(const git_diff_file *file);
 
 void rugged_parse_diff_options(git_diff_options *opts, VALUE rb_options);
+void rugged_parse_merge_options(git_merge_tree_opts *opts, VALUE rb_options);
 
 VALUE rugged_otype_new(git_otype t);
 git_otype rugged_otype_get(VALUE rb_type);

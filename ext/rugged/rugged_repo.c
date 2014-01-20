@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2013 GitHub, Inc
+ * Copyright (c) 2014 GitHub, Inc
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -35,6 +35,10 @@ extern VALUE rb_cRuggedCommit;
 extern VALUE rb_cRuggedTag;
 extern VALUE rb_cRuggedTree;
 extern VALUE rb_cRuggedReference;
+
+extern VALUE rb_cRuggedCredPlaintext;
+extern VALUE rb_cRuggedCredSshKey;
+extern VALUE rb_cRuggedCredDefault;
 
 VALUE rb_cRuggedRepo;
 VALUE rb_cRuggedOdbObject;
@@ -285,57 +289,211 @@ static VALUE rb_git_repo_init_at(int argc, VALUE *argv, VALUE klass)
 	return rugged_repo_new(klass, repo);
 }
 
-struct clone_fetch_callback_payload
+static VALUE rugged__block_yield_splat(VALUE args) {
+	VALUE block = rb_ary_shift(args);
+	int n = RARRAY_LEN(args);
+	if (n == 0) {
+		return rb_funcall(block, rb_intern("call"), 0);
+	} else {
+		int i;
+		VALUE *argv;
+		argv = ALLOCA_N(VALUE, n);
+
+		for (i=0; i<n; i++) {
+			argv[i] = rb_ary_entry(args, i);
+		}
+
+		return rb_funcall2(block, rb_intern("call"), n, argv);
+	}
+}
+
+struct rugged_remote_cb_payload
 {
-	VALUE proc;
-	VALUE exception;
-	const git_transfer_progress *stats;
+	VALUE progress;
+	VALUE completion;
+	VALUE transfer_progress;
+	VALUE update_tips;
+	VALUE credentials;
+    int exception;
 };
 
-static VALUE clone_fetch_callback_inner(struct clone_fetch_callback_payload *fetch_payload)
+static int rugged__remote_transfer_progress_cb(const git_transfer_progress *stats, void *payload)
 {
-	rb_funcall(fetch_payload->proc, id_call, 4,
-		UINT2NUM(fetch_payload->stats->total_objects),
-		UINT2NUM(fetch_payload->stats->indexed_objects),
-		UINT2NUM(fetch_payload->stats->received_objects),
-		INT2FIX(fetch_payload->stats->received_bytes));
-	return GIT_OK;
+	struct rugged_remote_cb_payload *remote_payload = payload;
+	VALUE args = rb_ary_new2(4);
+	rb_ary_push(args, remote_payload->transfer_progress);
+	rb_ary_push(args, UINT2NUM(stats->total_objects));
+	rb_ary_push(args, UINT2NUM(stats->indexed_objects));
+	rb_ary_push(args, UINT2NUM(stats->received_objects));
+	rb_ary_push(args, INT2FIX(stats->received_bytes));
+	rb_protect(rugged__block_yield_splat, args, &remote_payload->exception);
+
+	return remote_payload->exception ? GIT_ERROR : GIT_OK;
 }
 
-static VALUE clone_fetch_callback_rescue(struct clone_fetch_callback_payload *fetch_payload, VALUE exception)
+struct extract_cred_payload
 {
-	fetch_payload->exception = exception;
-	return GIT_ERROR;
-}
+	VALUE rb_cred;
+	git_cred **cred;
+	unsigned int allowed_types;
+};
 
-static int clone_fetch_callback(const git_transfer_progress *stats, void *payload)
-{
-	struct clone_fetch_callback_payload *fetch_payload = payload;
-	fetch_payload->stats = stats;
-	return rb_rescue(clone_fetch_callback_inner, (VALUE) fetch_payload,
-		clone_fetch_callback_rescue, (VALUE) fetch_payload);
-}
+static VALUE rugged__extract_cred(VALUE payload) {
+	struct extract_cred_payload *cred_payload = (struct extract_cred_payload*)payload;
+	git_cred **cred = cred_payload->cred;
+	VALUE rb_cred = cred_payload->rb_cred;
 
-static void parse_clone_options(git_clone_options *ret, VALUE rb_options_hash, struct clone_fetch_callback_payload *fetch_progress_payload)
-{
-	if (!NIL_P(rb_options_hash)) {
-		VALUE val;
+	if (rb_obj_is_kind_of(rb_cred, rb_cRuggedCredPlaintext)) {
+		if (!(cred_payload->allowed_types & GIT_CREDTYPE_USERPASS_PLAINTEXT)) {
+			rb_raise(rb_eArgError, "Invalid credential type");
+		} else {
+			VALUE rb_username = rb_iv_get(rb_cred, "@username");
+			VALUE rb_password = rb_iv_get(rb_cred, "@password");
 
-		val = rb_hash_aref(rb_options_hash, CSTR2SYM("bare"));
-		if (RTEST(val))
-			ret->bare = 1;
+			Check_Type(rb_username, T_STRING);
+			Check_Type(rb_password, T_STRING);
 
-		val = rb_hash_aref(rb_options_hash, CSTR2SYM("progress"));
-		if (RTEST(val)) {
-			if (rb_respond_to(val, rb_intern("call"))) {
-				fetch_progress_payload->proc = val;
-				ret->fetch_progress_payload = fetch_progress_payload;
-				ret->fetch_progress_cb = clone_fetch_callback;
-			} else {
-				rb_raise(rb_eArgError, "Expected a Proc or an object that responds to call (:progress).");
-			}
+
+			rugged_exception_check(
+				git_cred_userpass_plaintext_new(cred,
+					StringValueCStr(rb_username), StringValueCStr(rb_password)));
+		}
+	} else if (rb_obj_is_kind_of(rb_cred, rb_cRuggedCredSshKey)) {
+		if (!(cred_payload->allowed_types & GIT_CREDTYPE_SSH_KEY)) {
+			rb_raise(rb_eArgError, "Invalid credential type");
+		} else {
+			VALUE rb_username   = rb_iv_get(rb_cred, "@username");
+			VALUE rb_publickey  = rb_iv_get(rb_cred, "@publickey");
+			VALUE rb_privatekey = rb_iv_get(rb_cred, "@privatekey");
+			VALUE rb_passphrase = rb_iv_get(rb_cred, "@passphrase");
+
+			Check_Type(rb_privatekey, T_STRING);
+
+			if (!NIL_P(rb_username))
+				Check_Type(rb_username, T_STRING);
+			if (!NIL_P(rb_publickey))
+				Check_Type(rb_publickey, T_STRING);
+			if (!NIL_P(rb_passphrase))
+				Check_Type(rb_passphrase, T_STRING);
+
+			rugged_exception_check(
+				git_cred_ssh_key_new(cred,
+					NIL_P(rb_username) ? NULL : StringValueCStr(rb_username),
+					NIL_P(rb_publickey) ? NULL : StringValueCStr(rb_publickey),
+					StringValueCStr(rb_privatekey),
+					NIL_P(rb_passphrase) ? NULL : StringValueCStr(rb_passphrase)));
+		}
+	} else if (rb_obj_is_kind_of(rb_cred, rb_cRuggedCredDefault)) {
+		if (!(cred_payload->allowed_types & GIT_CREDTYPE_SSH_KEY)) {
+			rb_raise(rb_eArgError, "Invalid credential type");
+		} else {
+			rugged_exception_check(git_cred_default_new(cred));
 		}
 	}
+
+	return Qnil;
+}
+
+static int rugged__remote_credentials_cb(
+	git_cred **cred,
+	const char *url,
+	const char *username_from_url,
+	unsigned int allowed_types,
+	void *payload)
+{
+	struct rugged_remote_cb_payload *remote_payload = payload;
+	struct extract_cred_payload cred_payload;
+	VALUE args = rb_ary_new2(4), rb_allowed_types = rb_ary_new();
+
+	if (allowed_types & GIT_CREDTYPE_USERPASS_PLAINTEXT)
+		rb_ary_push(rb_allowed_types, CSTR2SYM("plaintext"));
+
+	if (allowed_types & GIT_CREDTYPE_SSH_KEY)
+		rb_ary_push(rb_allowed_types, CSTR2SYM("ssh_key"));
+
+	if (allowed_types & GIT_CREDTYPE_DEFAULT)
+		rb_ary_push(rb_allowed_types, CSTR2SYM("default"));
+
+	rb_ary_push(args, remote_payload->credentials);
+	rb_ary_push(args, url ? rb_str_new2(url) : Qnil);
+	rb_ary_push(args, username_from_url ? rb_str_new2(username_from_url) : Qnil);
+	rb_ary_push(args, rb_allowed_types);
+
+	cred_payload.cred = cred;
+	cred_payload.rb_cred = rb_protect(rugged__block_yield_splat, args, &remote_payload->exception);
+	cred_payload.allowed_types = allowed_types;
+
+	if (!remote_payload->exception)
+		rb_protect(rugged__extract_cred, (VALUE)&cred_payload, &remote_payload->exception);
+
+	return remote_payload->exception ? GIT_ERROR : GIT_OK;
+}
+
+static int rugged__default_remote_credentials_cb(
+	git_cred **cred,
+	const char *url,
+	const char *username_from_url,
+	unsigned int allowed_types,
+	void *payload)
+{
+	struct rugged_remote_cb_payload *remote_payload = payload;
+	struct extract_cred_payload cred_payload;
+
+	cred_payload.cred = cred;
+	cred_payload.rb_cred = remote_payload->credentials;
+	cred_payload.allowed_types = allowed_types;
+
+	rb_protect(rugged__extract_cred, (VALUE)&cred_payload, &remote_payload->exception);
+
+	return remote_payload->exception ? GIT_ERROR : GIT_OK;
+}
+
+static void parse_clone_options(git_clone_options *ret, VALUE rb_options_hash, struct rugged_remote_cb_payload *remote_payload)
+{
+	git_remote_callbacks remote_callbacks = GIT_REMOTE_CALLBACKS_INIT;
+	VALUE val;
+
+	if (NIL_P(rb_options_hash))
+		return;
+
+	val = rb_hash_aref(rb_options_hash, CSTR2SYM("bare"));
+	if (RTEST(val))
+		ret->bare = 1;
+
+	val = rb_hash_aref(rb_options_hash, CSTR2SYM("credentials"));
+	if (RTEST(val)) {
+		if (rb_obj_is_kind_of(val, rb_cRuggedCredPlaintext) ||
+			rb_obj_is_kind_of(val, rb_cRuggedCredSshKey) ||
+			rb_obj_is_kind_of(val, rb_cRuggedCredDefault))
+		{
+			remote_callbacks.credentials = rugged__default_remote_credentials_cb;
+			remote_payload->credentials = val;
+		} else if (rb_respond_to(val, rb_intern("call"))) {
+			remote_callbacks.credentials = rugged__remote_credentials_cb;
+			remote_payload->credentials = val;
+		} else {
+			rb_raise(rb_eArgError,
+				"Expected a Rugged::Credentials type, a Proc or an object that responds to call (:credentials).");
+		}
+	}
+
+	val = rb_hash_aref(rb_options_hash, CSTR2SYM("callbacks"));
+	if (RTEST(val)) {
+		VALUE cb;
+
+		cb = rb_hash_aref(val, CSTR2SYM("transfer_progress"));
+		if (RTEST(cb)) {
+			if (!rb_respond_to(cb, rb_intern("call"))) {
+				rb_raise(rb_eArgError, "Expected a Proc or an object that responds to call (:transfer_progress).");
+			}
+
+			remote_payload->transfer_progress = cb;
+			remote_callbacks.transfer_progress = rugged__remote_transfer_progress_cb;
+		}
+	}
+
+	remote_callbacks.payload = remote_payload;
+	ret->remote_callbacks = remote_callbacks;
 }
 
 /*
@@ -350,22 +508,53 @@ static void parse_clone_options(git_clone_options *ret, VALUE rb_options_hash, s
  *    If +true+, the clone will be created as a bare repository.
  *    Defaults to +false+.
  *
- *  :progress ::
- *    A callback that will be executed to report clone progress information. It will be passed
- *    the amount of +total_objects+, +indexed_objects+, +received_objects+ and +received_bytes+.
+ *  :branch ::
+ *    The name of a branch to checkout. Defaults to the remote's +HEAD+.
+ *
+ *  :remote ::
+ *    The name to give to the "origin" remote. Defaults to <tt>"origin"</tt>.
+ *
+ *  :ignore_cert_errors ::
+ *    If set to +true+, errors while validating the remote's host certificate will be ignored.
+ *
+ *  :credentials ::
+ *    The credentials to use for the clone operation. Can be either an instance of one
+ *    of the Rugged::Credentials types, or a proc returning one of the former.
+ *    The proc will be called with the +url+, the +username+ from the url (if applicable) and
+ *    a list of applicable credential types.
+ *
+ *  :callbacks ::
+ *    A Hash containing name-value pairs that define different callbacks to run during
+ *    the clone operation. Possible callbacks are:
+ *
+ *    :progress ::
+ *      Not yet implemented.
+ *
+ *    :completion ::
+ *      Not yet implemented.
+ *
+ *    :transfer_progress ::
+ *      A callback that will be executed to report clone progress information. It will be passed
+ *      the amount of +total_objects+, +indexed_objects+, +received_objects+ and +received_bytes+.
+ *
+ *    :update_tips ::
+ *      Not yet implemented.
  *
  *  Example:
  *
- *    progress = lambda { |total_objects, indexed_objects, received_objects, received_bytes|
- *      # ...
- *    }
- *    Repository.clone_at("https://github.com/libgit2/rugged.git", "./some/dir", :progress => progress)
+ *    Repository.clone_at("https://github.com/libgit2/rugged.git", "./some/dir", {
+ *		:callbacks => {
+ *        :progress => lambda { |total_objects, indexed_objects, received_objects, received_bytes|
+ *          # ...
+ *        }
+ *      }
+ *    })
  */
 static VALUE rb_git_repo_clone_at(int argc, VALUE *argv, VALUE klass)
 {
 	VALUE url, local_path, rb_options_hash;
 	git_clone_options options = GIT_CLONE_OPTIONS_INIT;
-	struct clone_fetch_callback_payload fetch_payload;
+	struct rugged_remote_cb_payload remote_payload = { Qnil, Qnil, Qnil, Qnil, 0 };
 	git_repository *repo;
 	int error;
 
@@ -373,13 +562,12 @@ static VALUE rb_git_repo_clone_at(int argc, VALUE *argv, VALUE klass)
 	Check_Type(url, T_STRING);
 	Check_Type(local_path, T_STRING);
 
-	fetch_payload.proc = Qnil;
-	fetch_payload.exception = Qnil;
-	parse_clone_options(&options, rb_options_hash, &fetch_payload);
+	parse_clone_options(&options, rb_options_hash, &remote_payload);
 
 	error = git_clone(&repo, StringValueCStr(url), StringValueCStr(local_path), &options);
-	if (RTEST(fetch_payload.exception))
-		rb_exc_raise(fetch_payload.exception);
+	
+	if (RTEST(remote_payload.exception))
+		rb_jump_tag(remote_payload.exception);
 	rugged_exception_check(error);
 
 	return rugged_repo_new(klass, repo);
@@ -506,7 +694,7 @@ static VALUE rb_git_repo_merge_base(VALUE self, VALUE rb_args)
 		rugged_exception_check(error);
 	}
 
-	error = git_merge_base_many(&base, repo, input_array, len);
+	error = git_merge_base_many(&base, repo, len, input_array);
 	xfree(input_array);
 
 	if (error == GIT_ENOTFOUND)
@@ -515,6 +703,56 @@ static VALUE rb_git_repo_merge_base(VALUE self, VALUE rb_args)
 	rugged_exception_check(error);
 
 	return rugged_create_oid(&base);
+}
+
+/*
+ *  call-seq:
+ *    repo.merge_commits(our_commit, their_commit, options = {}) -> index
+ *
+ *  Merges the two given commits, returning a Rugged::Index that reflects
+ *  the result of the merge.
+ *
+ *  +our_commit+ and +their_commit+ can either be Rugged::Commit objects,
+ *  or OIDs resolving to the former.
+ */
+static VALUE rb_git_repo_merge_commits(int argc, VALUE *argv, VALUE self)
+{
+	VALUE rb_our_commit, rb_their_commit, rb_options;
+	git_commit *our_commit, *their_commit;
+	git_index *index;
+	git_repository *repo;
+	git_merge_tree_opts opts = GIT_MERGE_TREE_OPTS_INIT;
+
+	rb_scan_args(argc, argv, "20:", &rb_our_commit, &rb_their_commit, &rb_options);
+
+	if (TYPE(rb_our_commit) == T_STRING) {
+		rb_our_commit = rugged_object_rev_parse(self, rb_our_commit, 1);
+	}
+
+	if (!rb_obj_is_kind_of(rb_our_commit, rb_cRuggedCommit)) {
+		rb_raise(rb_eArgError, "Expected a Rugged::Commit.");
+	}
+
+	if (TYPE(rb_their_commit) == T_STRING) {
+		rb_their_commit = rugged_object_rev_parse(self, rb_their_commit, 1);
+	}
+
+	if (!rb_obj_is_kind_of(rb_their_commit, rb_cRuggedCommit)) {
+		rb_raise(rb_eArgError, "Expected a Rugged::Commit.");
+	}
+
+	if (!NIL_P(rb_options)) {
+		Check_Type(rb_options, T_HASH);
+		rugged_parse_merge_options(&opts, rb_options);
+	}
+
+	Data_Get_Struct(self, git_repository, repo);
+	Data_Get_Struct(rb_our_commit, git_commit, our_commit);
+	Data_Get_Struct(rb_their_commit, git_commit, their_commit);
+
+	rugged_exception_check(git_merge_commits(&index, repo, our_commit, their_commit, &opts));
+
+	return rugged_index_new(rb_cRuggedIndex, self, index);
 }
 
 /*
@@ -775,13 +1013,14 @@ static VALUE rb_git_repo_head_detached(VALUE self)
 
 /*
  *  call-seq:
- *    repo.head_orphan? -> true or false
+ *    repo.head_unborn? -> true or false
  *
- *  Return whether the +HEAD+ of a repository is orphaned or not.
+ *  Return whether the current branch is unborn (+HEAD+ points to a
+ *  non-existent branch).
  */
-static VALUE rb_git_repo_head_orphan(VALUE self)
+static VALUE rb_git_repo_head_unborn(VALUE self)
 {
-	RB_GIT_REPO_GETTER(head_orphan);
+	RB_GIT_REPO_GETTER(head_unborn);
 }
 
 /*
@@ -914,8 +1153,9 @@ static VALUE rb_git_repo_set_workdir(VALUE self, VALUE rb_workdir)
  *  a different device than the one that contained +path+ (only applies
  *  to UNIX-based OSses).
  */
-static VALUE rb_git_repo_discover(int argc, VALUE *argv, VALUE self)
+static VALUE rb_git_repo_discover(int argc, VALUE *argv, VALUE klass)
 {
+	git_repository *repo;
 	VALUE rb_path, rb_across_fs;
 	char repository_path[GIT_PATH_MAX];
 	int error, across_fs = 0;
@@ -941,7 +1181,11 @@ static VALUE rb_git_repo_discover(int argc, VALUE *argv, VALUE self)
 	);
 
 	rugged_exception_check(error);
-	return rb_str_new_utf8(repository_path);
+
+	error = git_repository_open(&repo, repository_path);
+	rugged_exception_check(error);
+
+	return rugged_repo_new(klass, repo);
 }
 
 static VALUE flags_to_rb(unsigned int flags)
@@ -1420,24 +1664,6 @@ static VALUE rb_git_repo_default_signature(VALUE self) {
 	return rb_signature;
 }
 
-static VALUE rugged__block_yield_splat(VALUE args) {
-	VALUE block = rb_ary_shift(args);
-	int n = RARRAY_LEN(args);
-	if (n == 0) {
-		return rb_funcall(block, rb_intern("call"), 0);
-	} else {
-		int i;
-		VALUE *argv;
-		argv = ALLOCA_N(VALUE, n);
-
-		for (i=0; i<n; i++) {
-			argv[i] = rb_ary_entry(args, i);
-		}
-
-		return rb_funcall2(block, rb_intern("call"), n, argv);
-	}
-}
-
 void rugged__checkout_progress_cb(
 	const char *path,
 	size_t completed_steps,
@@ -1505,10 +1731,11 @@ static int rugged__checkout_notify_cb(
  */
 static void rugged_parse_checkout_options(git_checkout_opts *opts, VALUE rb_options)
 {
+	VALUE rb_value;
+
 	if (NIL_P(rb_options))
 		return;
 
-	VALUE rb_value;
 	Check_Type(rb_options, T_HASH);
 
 	rb_value = rb_hash_aref(rb_options, CSTR2SYM("progress"));
@@ -1666,7 +1893,7 @@ static void rugged_parse_checkout_options(git_checkout_opts *opts, VALUE rb_opti
  *  :strategy ::
  *    A single symbol or an array of symbols representing the strategies to use when
  *    performing the checkout. Possible values are:
- *    
+ *
  *    :none ::
  *      Perform a dry run (default).
  *
@@ -1899,11 +2126,13 @@ void Init_rugged_repo(void)
 	rb_define_method(rb_cRuggedRepo, "empty?",  rb_git_repo_is_empty,  0);
 
 	rb_define_method(rb_cRuggedRepo, "head_detached?",  rb_git_repo_head_detached,  0);
-	rb_define_method(rb_cRuggedRepo, "head_orphan?",  rb_git_repo_head_orphan,  0);
+	rb_define_method(rb_cRuggedRepo, "head_unborn?",  rb_git_repo_head_unborn,  0);
 	rb_define_method(rb_cRuggedRepo, "head=", rb_git_repo_set_head, 1);
 	rb_define_method(rb_cRuggedRepo, "head", rb_git_repo_get_head, 0);
 
 	rb_define_method(rb_cRuggedRepo, "merge_base", rb_git_repo_merge_base, -2);
+	rb_define_method(rb_cRuggedRepo, "merge_commits", rb_git_repo_merge_commits, -1);
+
 	rb_define_method(rb_cRuggedRepo, "reset", rb_git_repo_reset, 2);
 	rb_define_method(rb_cRuggedRepo, "reset_path", rb_git_repo_reset_path, -1);
 

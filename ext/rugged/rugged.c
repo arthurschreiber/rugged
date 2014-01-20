@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2013 GitHub, Inc
+ * Copyright (c) 2014 GitHub, Inc
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +25,7 @@
 #include "rugged.h"
 
 const char *RUGGED_ERROR_NAMES[] = {
+	"None",            /* GITERR_NONE */
 	"NoMemError",      /* GITERR_NOMEMORY, */
 	"OSError",         /* GITERR_OS, */
 	"InvalidError",    /* GITERR_INVALID, */
@@ -47,6 +48,8 @@ const char *RUGGED_ERROR_NAMES[] = {
 	"CheckoutError",   /* GITERR_CHECKOUT, */
 	"FetchheadError",  /* GITERR_FETCHHEAD, */
 	"MergeError",      /* GITERR_MERGE, */
+	"SshError",        /* GITERR_SSH, */
+	"FilterError"      /* GITERR_FILTER, */
 };
 
 #define RUGGED_ERROR_COUNT (int)((sizeof(RUGGED_ERROR_NAMES)/sizeof(RUGGED_ERROR_NAMES[0])))
@@ -400,10 +403,12 @@ void Init_rugged(void)
 	Init_rugged_notes();
 	Init_rugged_settings();
 	Init_rugged_diff();
-	Init_rugged_diff_patch();
+	Init_rugged_patch();
 	Init_rugged_diff_delta();
 	Init_rugged_diff_hunk();
 	Init_rugged_diff_line();
+	Init_rugged_blame();
+	Init_rugged_cred();
 
 	/*
 	 * Sort the repository contents in no particular ordering;

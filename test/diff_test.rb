@@ -234,6 +234,85 @@ class TreeToWorkdirDiffTest < Rugged::SandboxedTestCase
     assert_equal 5, lines.select(&:addition?).size
     assert_equal 4, lines.select(&:deletion?).size
   end
+
+  def test_diff_merge
+    repo = sandbox_init("status")
+    index = repo.index
+
+    a = Rugged::Commit.lookup(repo, "26a125ee1bf").tree
+
+    # merge diffs to simulate "git diff 26a125ee1bf"
+
+    diff  = a.diff(index, :include_ignored => true, :include_untracked => true)
+    diff2 = index.diff(:include_ignored => true, :include_untracked => true)
+    diff.merge!(diff2)
+
+    deltas = diff.deltas
+    patches = diff.patches
+    hunks = patches.map(&:hunks).flatten
+    lines = hunks.map(&:lines).flatten
+
+    # expected values differ from "git diff --porcelain 26a125ee1bf"
+    # because that includes the file "staged_delete_modified_file" twice,
+    # once in the deleted list and again the untracked list and libgit2
+    # does not do that with a merged diff (though it would with status)
+
+    assert_equal 15, deltas.size
+    assert_equal 15, patches.size
+
+    assert_equal 2, deltas.select(&:added?).size
+    assert_equal 5, deltas.select(&:deleted?).size
+    assert_equal 4, deltas.select(&:modified?).size
+    assert_equal 1, deltas.select(&:ignored?).size
+    assert_equal 3, deltas.select(&:untracked?).size
+
+    assert_equal 11, hunks.size
+
+    assert_equal 17, lines.size
+    assert_equal 4, lines.select(&:context?).size
+    assert_equal 8, lines.select(&:addition?).size
+    assert_equal 5, lines.select(&:deletion?).size
+  end
+
+  def test_stats
+    repo = sandbox_init("status")
+    index = repo.index
+
+    a = Rugged::Commit.lookup(repo, "26a125ee1bf").tree
+
+    # merge diffs to simulate "git diff 26a125ee1bf"
+
+    diff  = a.diff(index, :include_ignored => true, :include_untracked => true)
+    diff2 = index.diff(:include_ignored => true, :include_untracked => true)
+    diff.merge!(diff2)
+
+    # expected values from: git diff --stat 26a125ee1bf
+    files, adds, dels = diff.stat
+    assert_equal 11, files
+    assert_equal 8, adds
+    assert_equal 5, dels
+
+    # expected per-file values from the diff --stat output plus total lines
+    expected_patch_stat = [
+      [ 0, 1, 1 ], [ 1, 0, 2 ], [ 1, 0, 2 ], [ 0, 1, 1 ], [ 2, 0, 3 ],
+      [ 0, 1, 1 ], [ 0, 1, 1 ], [ 1, 0, 1 ], [ 2, 0, 2 ], [ 0, 1, 1 ],
+      [ 1, 0, 2 ]
+    ]
+
+    diff.each_patch do |patch|
+      next if [:unmodified, :ignored, :untracked].include? patch.delta.status
+
+      expected_adds, expected_dels, expected_lines = expected_patch_stat.shift
+
+      actual_adds, actual_dels = patch.stat
+
+      assert_equal expected_adds, actual_adds
+      assert_equal expected_dels, actual_dels
+      assert_equal expected_adds + expected_dels, patch.changes
+
+      assert_equal expected_lines, patch.lines
+    end
+  end
 end
 
 class TreeToTreeDiffTest < Rugged::SandboxedTestCase
@@ -570,7 +649,7 @@ EOS
     patches = []
 
     diff.each_patch do |patch|
-      assert_instance_of Rugged::Diff::Patch, patch
+      assert_instance_of Rugged::Patch, patch
       patches << patch
     end
 
@@ -616,18 +695,41 @@ EOS
 
     assert_equal :deletion, lines[0].line_origin
     assert_equal "The Git feature that really makes it stand apart from nearly every other SCM\n", lines[0].content
+    assert_equal 0, lines[0].content_offset
 
     assert_equal :addition, lines[1].line_origin
     assert_equal "The Git feature that r3ally mak3s it stand apart from n3arly 3v3ry other SCM\n", lines[1].content
+    assert_equal 0, lines[1].content_offset
 
     assert_equal :context, lines[2].line_origin
     assert_equal "out there is its branching model.\n", lines[2].content
+    assert_nil lines[2].content_offset
 
     assert_equal :context, lines[3].line_origin
     assert_equal "\n", lines[3].content
 
     assert_equal :context, lines[4].line_origin
     assert_equal "Git allows and encourages you to have multiple local branches that can be\n", lines[4].content
+
+    lines = hunks[2].each_line.to_a
+
+    assert_equal 14, lines.size
+
+    assert_equal :deletion, lines[3].line_origin
+    assert_equal "of your branches. You can choose to share just one of your branches, a few\n", lines[3].content
+    assert_equal 1248, lines[3].content_offset
+
+    assert_equal :deletion, lines[4].line_origin
+    assert_equal "of them, or all of them. This tends to free people to try new ideas without\n", lines[4].content
+    assert_equal 1323, lines[4].content_offset
+
+    assert_equal :deletion, lines[11].line_origin
+    assert_equal "it.\n", lines[11].content
+    assert_equal 1721, lines[11].content_offset
+
+    assert_equal :addition, lines[12].line_origin
+    assert_equal "it.!", lines[12].content
+    assert_equal 1289, lines[12].content_offset
   end
 
   def test_each_patch_returns_enumerator
@@ -642,7 +744,7 @@ EOS
 
     patches = []
     diff.each_patch.each do |patch|
-      assert_instance_of Rugged::Diff::Patch, patch
+      assert_instance_of Rugged::Patch, patch
       patches << patch
     end
     assert_equal 2, patches.size
@@ -773,5 +875,33 @@ EOS
 M\tanother.txt
 M\treadme.txt
 EOS
+  end
+
+  def test_stats
+    repo = sandbox_init("diff")
+
+    a = repo.lookup("d70d245ed97ed2aa596dd1af6536e4bfdb047b69")
+    b = repo.lookup("7a9e0b02e63179929fed24f0a3e0f19168114d10")
+
+    diff = a.tree.diff(b.tree)
+
+    files, adds, dels = diff.stat
+    assert_equal 2, files
+    assert_equal 7, adds
+    assert_equal 14, dels
+
+    expected_patch_stat = [ [ 5, 5, 26 ], [ 2, 9, 28 ] ]
+
+    diff.each_patch do |patch|
+      expected_adds, expected_dels, expected_lines = expected_patch_stat.shift
+
+      actual_adds, actual_dels = patch.stat
+
+      assert_equal expected_adds, actual_adds
+      assert_equal expected_dels, actual_dels
+      assert_equal expected_adds + expected_dels, patch.changes
+
+      assert_equal expected_lines, patch.lines
+    end
   end
 end
