@@ -432,11 +432,11 @@ class RepositoryCloneTest < Rugged::TestCase
   end
 
   def test_clone_with_transfer_progress_callback
-    total_objects = indexed_objects = received_objects = received_bytes = nil
+    total_objects, indexed_objects, received_objects, local_objects, total_deltas, indexed_deltas, received_bytes = nil
     callsback = 0
-    repo = Rugged::Repository.clone_at(@source_path, @tmppath,{
-      :transfer_progress => lambda { |*args|
-        total_objects, indexed_objects, received_objects, received_bytes = args
+    repo = Rugged::Repository.clone_at(@source_path, @tmppath, {
+      transfer_progress: lambda { |*args|
+        total_objects, indexed_objects, received_objects, local_objects, total_deltas, indexed_deltas, received_bytes = args
         callsback += 1
       }
     })
@@ -445,6 +445,9 @@ class RepositoryCloneTest < Rugged::TestCase
     assert_equal 19,   total_objects
     assert_equal 19,   indexed_objects
     assert_equal 19,   received_objects
+    assert_equal 0,    local_objects
+    assert_equal 2,    total_deltas
+    assert_equal 2,    indexed_deltas
     assert_equal 1563, received_bytes
   end
 

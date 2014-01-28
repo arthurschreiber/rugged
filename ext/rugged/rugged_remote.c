@@ -552,6 +552,9 @@ static int rugged__remote_transfer_progress_cb(const git_transfer_progress *stat
 	rb_ary_push(args, UINT2NUM(stats->total_objects));
 	rb_ary_push(args, UINT2NUM(stats->indexed_objects));
 	rb_ary_push(args, UINT2NUM(stats->received_objects));
+	rb_ary_push(args, UINT2NUM(stats->local_objects));
+	rb_ary_push(args, UINT2NUM(stats->total_deltas));
+	rb_ary_push(args, UINT2NUM(stats->indexed_deltas));
 	rb_ary_push(args, INT2FIX(stats->received_bytes));
 
 	rb_protect(rugged__block_yield_splat, args, &remote_payload->exception);
