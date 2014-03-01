@@ -805,59 +805,43 @@ void parse_fetch_options(git_remote_callbacks *callbacks, VALUE rb_options_hash,
  *      }
  *    })
  */
-static VALUE rb_git_remote_fetch(int argc, VALUE *argv, VALUE self) {
+static VALUE rb_git_remote_fetch(int argc, VALUE *argv, VALUE self)
+{
 	VALUE rb_options, rb_refspecs;
 	git_remote *remote, *tmp_remote;
-	int error, i;
 	git_remote_callbacks callbacks = GIT_REMOTE_CALLBACKS_INIT;
+	git_strarray refspecs;
+
+	int error, has_custom_refspecs = 0;
+
 	struct rugged_remote_cb_payload payload = { Qnil, Qnil, Qnil, Qnil, 0 };
 
 	rb_scan_args(argc, argv, "01:", &rb_refspecs, &rb_options);
-	parse_fetch_options(&callbacks, rb_options, &payload);
 
-	if (!NIL_P(rb_refspecs)) {
-		Check_Type(rb_refspecs, T_ARRAY);
-		for (i = 0; i < RARRAY_LEN(rb_refspecs); ++i) {
-			Check_Type(rb_ary_entry(rb_refspecs, i), T_STRING);
-		}
-	}
+	has_custom_refspecs = !NIL_P(rb_refspecs);
+	rugged_rb_ary_to_strarray(rb_refspecs, &refspecs);
+
+	parse_fetch_options(&callbacks, rb_options, &payload);
 
 	Data_Get_Struct(self, git_remote, remote);
 
 	// Create a temporary remote that we use for fetching
-	error = git_remote_create_inmemory(&tmp_remote, git_remote_owner(remote), NULL, git_remote_url(remote));
+	error = git_remote_dup(&tmp_remote, remote);
 	rugged_exception_check(error);
-
-	git_remote_set_autotag(tmp_remote, git_remote_autotag(remote));
 
 	error = git_remote_set_callbacks(tmp_remote, &callbacks);
 	if (error) goto cleanup;
 
-	if (!NIL_P(rb_refspecs)) {
-		for (i = 0; !error && i < RARRAY_LEN(rb_refspecs); ++i) {
-			VALUE rb_refspec = rb_ary_entry(rb_refspecs, i);
-			error = git_remote_add_fetch(tmp_remote, StringValueCStr(rb_refspec));
-		}
-
-		if (error) goto cleanup;
-	} else {
-		git_strarray refspecs;
-		error = git_remote_get_fetch_refspecs(&refspecs, remote);
-
-		if (!error) {
-			error = git_remote_set_fetch_refspecs(tmp_remote, &refspecs);
-		}
-
-		git_strarray_free(&refspecs);
-
+	if (has_custom_refspecs) {
+		error = git_remote_set_fetch_refspecs(tmp_remote, &refspecs);
 		if (error) goto cleanup;
 	}
 
 	error = git_remote_fetch(tmp_remote, NULL, NULL);
 
 cleanup:
-
 	git_remote_free(tmp_remote);
+	xfree(refspecs.strings);
 
 	if (RTEST(payload.exception))
 		rb_jump_tag(payload.exception);
