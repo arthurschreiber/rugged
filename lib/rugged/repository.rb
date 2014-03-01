@@ -195,13 +195,12 @@ module Rugged
       (blob.type == :blob) ? blob : nil
     end
 
-    def fetch(remote_or_url, options_or_refspecs = nil, options = {})
-      if options_or_refspecs.kind_of?(Hash)
-        options, options_or_refspecs = options_or_refspecs, nil
+    def fetch(remote_or_url, *args)
+      unless remote_or_url.kind_of? Remote
+        remote_or_url = Remote.lookup(self, remote_or_url) || Remote.new(self, remote_or_url)
       end
 
-      remote_or_url = Remote.new(self, remote_or_url) unless remote_or_url.kind_of? Remote
-      remote_or_url.fetch(options_or_refspecs, options)
+      remote_or_url.fetch(*args)
     end
   end
 end
