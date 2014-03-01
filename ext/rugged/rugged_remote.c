@@ -30,6 +30,7 @@ extern VALUE rb_eRuggedError;
 
 extern VALUE rb_cRuggedCredPlaintext;
 extern VALUE rb_cRuggedCredSshKey;
+extern VALUE rb_cRuggedCredSshKeyFromAgent;
 extern VALUE rb_cRuggedCredDefault;
 
 VALUE rb_cRuggedRemote;
@@ -613,10 +614,12 @@ static VALUE rugged__extract_cred(VALUE payload) {
 			Check_Type(rb_username, T_STRING);
 			Check_Type(rb_password, T_STRING);
 
-
 			rugged_exception_check(
 				git_cred_userpass_plaintext_new(cred,
-					StringValueCStr(rb_username), StringValueCStr(rb_password)));
+					StringValueCStr(rb_username),
+					StringValueCStr(rb_password)
+				)
+			);
 		}
 	} else if (rb_obj_is_kind_of(rb_cred, rb_cRuggedCredSshKey)) {
 		if (!(cred_payload->allowed_types & GIT_CREDTYPE_SSH_KEY)) {
@@ -641,7 +644,24 @@ static VALUE rugged__extract_cred(VALUE payload) {
 					NIL_P(rb_username) ? NULL : StringValueCStr(rb_username),
 					NIL_P(rb_publickey) ? NULL : StringValueCStr(rb_publickey),
 					StringValueCStr(rb_privatekey),
-					NIL_P(rb_passphrase) ? NULL : StringValueCStr(rb_passphrase)));
+					NIL_P(rb_passphrase) ? NULL : StringValueCStr(rb_passphrase)
+				)
+			);
+		}
+	} else if (rb_obj_is_kind_of(rb_cred, rb_cRuggedCredSshKeyFromAgent)) {
+		if (!(cred_payload->allowed_types & GIT_CREDTYPE_SSH_KEY)) {
+			rb_raise(rb_eArgError, "Invalid credential type");
+		} else {
+			VALUE rb_username = rb_iv_get(rb_cred, "@username");
+
+			if (!NIL_P(rb_username))
+				Check_Type(rb_username, T_STRING);
+
+			rugged_exception_check(
+				git_cred_ssh_key_from_agent(cred,
+					NIL_P(rb_username) ? NULL : StringValueCStr(rb_username)
+				)
+			);
 		}
 	} else if (rb_obj_is_kind_of(rb_cred, rb_cRuggedCredDefault)) {
 		if (!(cred_payload->allowed_types & GIT_CREDTYPE_SSH_KEY)) {
@@ -719,6 +739,7 @@ void parse_fetch_options(git_remote_callbacks *callbacks, VALUE rb_options_hash,
 	if (RTEST(val)) {
 		if (rb_obj_is_kind_of(val, rb_cRuggedCredPlaintext) ||
 			rb_obj_is_kind_of(val, rb_cRuggedCredSshKey) ||
+			rb_obj_is_kind_of(val, rb_cRuggedCredSshKeyFromAgent) ||
 			rb_obj_is_kind_of(val, rb_cRuggedCredDefault))
 		{
 			callbacks->credentials = rugged__default_remote_credentials_cb;

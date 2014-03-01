@@ -3,14 +3,24 @@ module Rugged
     # A plain-text username and password credential object.
     class Plaintext
       def initialize(options)
-        @username, @password = options[:username], options[:password]
+        @username = options[:username]
+        @password = options[:password]
       end
     end
 
     # A ssh key credential object that can optionally be passphrase-protected
     class SshKey
       def initialize(options)
-        @username, @publickey, @privatekey, @passphrase = options[:username], options[:publickey], options[:privatekey], options[:passphrase]
+        @username   = options[:username]
+        @publickey  = options[:publickey]
+        @privatekey = options[:privatekey]
+        @passphrase = options[:passphrase]
+      end
+    end
+
+    class SshKeyFromAgent
+      def initialize(options)
+        @username = options[:username]
       end
     end
 

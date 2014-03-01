@@ -28,13 +28,15 @@ extern VALUE rb_mRugged;
 VALUE rb_mRuggedCred;
 VALUE rb_cRuggedCredPlaintext;
 VALUE rb_cRuggedCredSshKey;
+VALUE rb_cRuggedCredSshKeyFromAgent;
 VALUE rb_cRuggedCredDefault;
 
 void Init_rugged_cred(void)
 {
-	rb_mRuggedCred          = rb_define_module_under(rb_mRugged, "Credentials");
+	rb_mRuggedCred                = rb_define_module_under(rb_mRugged, "Credentials");
 
-	rb_cRuggedCredPlaintext = rb_define_class_under(rb_mRuggedCred, "Plaintext", rb_cObject);
-	rb_cRuggedCredSshKey    = rb_define_class_under(rb_mRuggedCred, "SshKey", rb_cObject);
-	rb_cRuggedCredDefault   = rb_define_class_under(rb_mRuggedCred, "Default", rb_cObject);
+	rb_cRuggedCredPlaintext       = rb_define_class_under(rb_mRuggedCred, "Plaintext", rb_cObject);
+	rb_cRuggedCredSshKey          = rb_define_class_under(rb_mRuggedCred, "SshKey", rb_cObject);
+	rb_cRuggedCredSshKeyFromAgent = rb_define_class_under(rb_mRuggedCred, "SshKeyFromAgent", rb_cObject);
+	rb_cRuggedCredDefault         = rb_define_class_under(rb_mRuggedCred, "Default", rb_cObject);
 }
