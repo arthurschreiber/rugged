@@ -734,7 +734,8 @@ void parse_fetch_options(git_remote_callbacks *callbacks, VALUE rb_options_hash,
  *
  *  :transfer_progress ::
  *    A callback that will be executed to report clone progress information. It will be passed
- *    the amount of +total_objects+, +indexed_objects+, +received_objects+ and +received_bytes+.
+ *    the amount of +total_objects+, +indexed_objects+, +received_objects+, +local_objects+,
+ *    +total_deltas+, +indexed_deltas+ and +received_bytes+.
  *
  *  :update_tips ::
  *    A callback that will be executed each time a reference is updated locally. It will be
@@ -751,7 +752,7 @@ void parse_fetch_options(git_remote_callbacks *callbacks, VALUE rb_options_hash,
  *
  *    remote = Rugged::Remote.lookup(@repo, 'origin')
  *    remote.fetch({
- *      :transfer_progress => lambda { |total_objects, indexed_objects, received_objects, received_bytes|
+ *      :transfer_progress => lambda { |total_objects, indexed_objects, received_objects, local_objects, total_deltas, indexed_deltas, received_bytes|
  *        # ...
  *      }
  *    })
