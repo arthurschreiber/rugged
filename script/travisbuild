@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Create a test repo which we can use for the online::push tests
+# Create a test repo which we can use for the online tests
 mkdir $HOME/_temp
 git init --bare $HOME/_temp/test.git
 git daemon --listen=localhost --export-all --enable=receive-pack --base-path=$HOME/_temp $HOME/_temp 2>/dev/null &
