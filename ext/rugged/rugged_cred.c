@@ -62,10 +62,9 @@ static void rugged_credential_extract_ssh_key(git_cred **cred, VALUE rb_credenti
 	VALUE rb_privatekey = rb_iv_get(rb_credential, "@privatekey");
 	VALUE rb_passphrase = rb_iv_get(rb_credential, "@passphrase");
 
+	Check_Type(rb_username, T_STRING);
 	Check_Type(rb_privatekey, T_STRING);
 
-	if (!NIL_P(rb_username))
-		Check_Type(rb_username, T_STRING);
 	if (!NIL_P(rb_publickey))
 		Check_Type(rb_publickey, T_STRING);
 	if (!NIL_P(rb_passphrase))
@@ -73,7 +72,7 @@ static void rugged_credential_extract_ssh_key(git_cred **cred, VALUE rb_credenti
 
 	rugged_exception_check(
 		git_cred_ssh_key_new(cred,
-			NIL_P(rb_username) ? NULL : StringValueCStr(rb_username),
+			StringValueCStr(rb_username),
 			NIL_P(rb_publickey) ? NULL : StringValueCStr(rb_publickey),
 			StringValueCStr(rb_privatekey),
 			NIL_P(rb_passphrase) ? NULL : StringValueCStr(rb_passphrase)
@@ -85,13 +84,10 @@ static void rugged_credential_extract_ssh_key_from_agent(git_cred **cred, VALUE 
 {
 	VALUE rb_username = rb_iv_get(rb_credential, "@username");
 
-	if (!NIL_P(rb_username))
-		Check_Type(rb_username, T_STRING);
+	Check_Type(rb_username, T_STRING);
 
 	rugged_exception_check(
-		git_cred_ssh_key_from_agent(cred,
-			NIL_P(rb_username) ? NULL : StringValueCStr(rb_username)
-		)
+		git_cred_ssh_key_from_agent(cred, StringValueCStr(rb_username))
 	);
 }
 
