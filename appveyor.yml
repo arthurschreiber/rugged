@@ -13,7 +13,10 @@ install:
   - choco install pkgconfiglite
 
 build_script:
-  - rake native gem || type 'tmp\i386-mingw32\rugged\1.9.3\mkmf.log'
+  - rake native gem
+
+on_failure:
+  - type 'tmp\i386-mingw32\rugged\1.9.3\mkmf.log'
 
 test_script:
   - rake test
