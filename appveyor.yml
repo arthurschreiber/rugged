@@ -18,6 +18,7 @@ install:
 
 build_script:
   - rake native gem
+  - appveyor PushArtifact '**\mkmf.log'
 
 test_script:
   - rake test
