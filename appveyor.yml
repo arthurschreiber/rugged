@@ -16,9 +16,7 @@ build_script:
   - rake native gem
 
 on_failure:
-  - dir ext
-  - dir ext\rugged
-  - dir tmp\i386-mingw32\rugged\1.9.3
+  - type tmp\i386-mingw32\rugged\1.9.3\mkmf.log
 
 
 test_script:
