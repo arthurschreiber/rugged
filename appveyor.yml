@@ -21,6 +21,7 @@ build_script:
 test_script:
   - rake test
 artifacts:
+  - path: '**\mkmf.log'
   - path: pkg\*.gem
 
 matrix:
