@@ -18,8 +18,10 @@ install:
 
 build_script:
   - rake native gem
+
 test_script:
   - rake test
+
 artifacts:
   - path: '**\mkmf.log'
   - path: pkg\*.gem
