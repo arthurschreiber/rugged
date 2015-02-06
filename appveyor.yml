@@ -4,7 +4,7 @@ version: "{build}"
 clone_depth: 10
 
 install:
-  - SET PATH=C:\Ruby%ruby_version%\bin;%PATH%
+  - SET PATH=C:\Ruby%ruby_version%\DevKit\bin;C:\Ruby%ruby_version%\DevKit\mingw\bin;C:\Ruby%ruby_version%\bin;%PATH%
   - ruby --version
   - gem --version
   - gem install bundler --quiet --no-ri --no-rdoc
