@@ -10,10 +10,7 @@ install:
   - gem install bundler --quiet --no-ri --no-rdoc
   - bundler --version
   - bundle install
-
-  - ps: |
-      choco install cmake
-      choco install pkgconfiglite
+  - choco install pkgconfiglite
 
 build_script:
   - rake native gem || type 'tmp\i386-mingw32\rugged\1.9.3\mkmf.log'
