@@ -11,12 +11,21 @@ install:
   - gem install bundler --quiet --no-ri --no-rdoc
   - bundler --version
   - bundle install
+
+  - ps: |
+    choco install cmake
+    choco install python2
+    choco install pkgconfiglite
+
 build_script:
   - rake native gem
 test_script:
   - rake test
 artifacts:
   - path: pkg\*.gem
+
+matrix:
+  fast_finish: true
 
 environment:
   matrix:
