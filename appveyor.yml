@@ -16,7 +16,7 @@ build_script:
   - rake native gem
 
 on_failure:
-  - appveyor PushArtifact '**\mkmf.log'
+  - type 'ext\rugged\mkmf.log'
 
 test_script:
   - rake test
