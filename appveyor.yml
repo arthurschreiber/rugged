@@ -18,8 +18,7 @@ build_script:
 on_failure:
   - dir ext
   - dir ext\rugged
-  - dir tmp/i386-mingw32/rugged/1.9.3
-  - type 'ext\rugged\mkmf.log'
+  - dir tmp\i386-mingw32\rugged\1.9.3
 
 
 test_script:
