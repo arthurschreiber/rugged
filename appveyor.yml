@@ -13,9 +13,9 @@ install:
   - bundle install
 
   - ps: |
-    choco install cmake
-    choco install python2
-    choco install pkgconfiglite
+      choco install cmake
+      choco install python2
+      choco install pkgconfiglite
 
 build_script:
   - rake native gem
